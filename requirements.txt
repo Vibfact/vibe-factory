@@ -1,0 +1,6 @@
+requests>=2.32
+pandas>=2.2
+numpy>=1.26
+feedparser>=6.0
+vaderSentiment>=3.3.2
+PyYAML>=6.0

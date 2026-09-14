@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+# plaintext state is never committed - only the encrypted .enc files are
+state/history.csv
+state/weights.json
+state/audit.md
+state/cache.json
+state/intraday.jsonl
+state/alert_log.json
+!state/*.enc
+!state/.gitkeep
