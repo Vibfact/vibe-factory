@@ -551,3 +551,6 @@ from src import patch6  # noqa: E402,F401  (fills cot_crowding, patches blend)
 
 
 from src import patch7  # noqa: E402,F401  (macro surprise, inflation, geo, typed skew)
+
+
+from src import patch8  # noqa: E402,F401  (stress tickers, component log, health)

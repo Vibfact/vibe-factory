@@ -10,3 +10,8 @@ state/intraday.jsonl
 state/alert_log.json
 !state/*.enc
 !state/.gitkeep
+state/cache.json
+state/bls.json
+state/gdelt_state.json
+state/intraday.jsonl
+state/alert_log.json
