@@ -554,3 +554,6 @@ from src import patch7  # noqa: E402,F401  (macro surprise, inflation, geo, type
 
 
 from src import patch8  # noqa: E402,F401  (stress tickers, component log, health)
+
+
+from src.patch9 import federal_register, trump_pressure  # noqa: E402,F401
