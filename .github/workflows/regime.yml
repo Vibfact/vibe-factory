@@ -56,6 +56,7 @@ jobs:
       - name: Build regime score, blend, publish
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          ARGENTOR_TOKEN: ${{ secrets.ARGENTOR_TOKEN }}
           BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
