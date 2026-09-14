@@ -1,0 +1,104 @@
+# .github/workflows/regime.yml
+# REGIME track + the only writer of durable history. Encrypts before committing,
+# so the repo can stay public (unmetered minutes) while the signal stays private.
+name: vibe-regime
+
+on:
+  schedule:
+    - cron: "7 5 * * 1-5"    # 07:07 CEST digest, pre-London
+    - cron: "7 12 * * 1-5"   # 14:07 CEST digest, pre-US data
+    - cron: "7 20 * * 5"     # Friday post-COT release
+    - cron: "27 6 * * 6"     # Saturday self-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write           # GITHUB_TOKEN is read-only by default since 2022
+
+concurrency:
+  group: vibe-regime
+  cancel-in-progress: false  # never abandon a run that is mid-commit
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            state/cache.json
+            state/intraday.jsonl
+            state/alert_log.json
+          key: vibe-state-${{ github.run_id }}
+          restore-keys: vibe-state-
+
+      - name: Decrypt history
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+        run: |
+          if [ -f state/history.csv.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+              -in state/history.csv.enc -out state/history.csv -pass env:STATE_KEY
+          else
+            python -c "from src.schema import init; init('state/history.csv')"
+          fi
+
+      - name: Build regime score, blend, publish
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
+          BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
+          BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: |
+          python -m src.run --track regime --append state/history.csv
+
+      - name: Weekly self-audit and walk-forward refit
+        if: github.event.schedule == '27 6 * * 6'
+        run: |
+          python -m src.audit --history state/history.csv --out state/audit.md
+          python -m src.calibrate --history state/history.csv --out state/weights.json
+
+      - name: Re-encrypt and wipe plaintext
+        if: always()
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+        run: |
+          for f in state/history.csv state/weights.json state/audit.md; do
+            [ -f "$f" ] || continue
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+              -in "$f" -out "$f.enc" -pass env:STATE_KEY
+            shred -u "$f" 2>/dev/null || rm -f "$f"
+          done
+
+      - name: Commit encrypted state
+        run: |
+          git config user.name  "vibe-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A state/*.enc
+          git diff --staged --quiet && exit 0
+          git commit -m "state: $(date -u +'%F %H:%M')Z"
+          for i in 1 2 3; do
+            git pull --rebase --autostash && git push && break || sleep $((i*5))
+          done
+
+      - name: Save state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            state/cache.json
+            state/intraday.jsonl
+            state/alert_log.json
+          key: vibe-state-${{ github.run_id }}

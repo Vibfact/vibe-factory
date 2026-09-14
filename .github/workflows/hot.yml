@@ -1,0 +1,78 @@
+# .github/workflows/hot.yml
+# PRESSURE track. Fast, cheap, stateless-ish: reads cache, polls fast sources, alerts on change.
+# The schedule block between the MANAGED markers is rewritten nightly by scheduler.yml.
+# Do not hand-edit inside the markers.
+name: vibe-hot
+
+on:
+  # >>> MANAGED SCHEDULE START <<<
+  schedule:
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 12-14 * * 1-5"   # hot: 08:30 ET window (summer UTC)
+    - cron: "3,18,33,48 6-11 * * 1-5"                            # London morning, 15 min
+    - cron: "7,37 15-19 * * 1-5"                                 # NY afternoon, 30 min
+    - cron: "23 20,21,22,23,0,1,2,3,4,5 * * 1-5"                 # Asia, hourly
+    - cron: "13 1,5,9,13,17,21 * * 6,0"                          # weekend skeleton (CME 1OZ 24/7)
+  # >>> MANAGED SCHEDULE END <<<
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compute but do not send alerts"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read          # hot runs never push; state lives in the Actions cache
+
+concurrency:
+  group: vibe-hot
+  cancel-in-progress: true   # a delayed run must never queue behind the next one
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3       # hard stop; target runtime is under 45 s
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Mutable-cache pattern: unique key per run, restored from the newest prefix match.
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            state/cache.json
+            state/intraday.jsonl
+            state/alert_log.json
+          key: vibe-state-${{ github.run_id }}
+          restore-keys: |
+            vibe-state-
+
+      - name: Poll and score
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
+          BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          python -m src.run --track pressure --budget-seconds 42
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            state/cache.json
+            state/intraday.jsonl
+            state/alert_log.json
+          key: vibe-state-${{ github.run_id }}

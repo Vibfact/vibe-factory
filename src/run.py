@@ -1,5 +1,8 @@
-"""src/run.py — orchestrator. Concurrent polls under a hard time budget,
-per-source isolation, TTL cache, change-triggered Telegram alerts.
+"""src/run.py  (patched 2026-09-14)
+
+Fix: concurrent.futures.as_completed raises TimeoutError when the budget expires,
+which previously killed the whole run. Now the timeout is caught, pending futures
+are cancelled, and their sources are simply marked failed.
 
     python -m src.run --track pressure --budget-seconds 42
     python -m src.run --track regime --append state/history.csv
@@ -26,7 +29,8 @@ INTRADAY = STATE / "intraday.jsonl"
 TTL = {"metals": 900, "macro": 21_600, "releases": 21_600, "fomc": 86_400,
        "fed_feed": 1_800, "kalshi": 300, "polymarket": 300, "trump": 300,
        "fedreg": 3_600, "gdelt": 3_600}
-PRESSURE_SOURCES = ("kalshi", "polymarket", "trump", "metals")
+PRESSURE_SOURCES = ("metals", "kalshi", "polymarket", "trump",
+                    "macro", "releases", "fomc", "fedreg")
 ALL_SOURCES = tuple(TTL)
 
 FETCH = {
@@ -72,19 +76,26 @@ class Cache:
 def collect(cache: Cache, wanted: tuple[str, ...], budget_s: float) -> tuple[dict, list[str]]:
     todo = [k for k in wanted if cache.stale(k, TTL[k])]
     failed: list[str] = []
-    deadline = time.time() + budget_s
     if todo:
         with cf.ThreadPoolExecutor(max_workers=len(todo)) as ex:
             futures = {ex.submit(FETCH[k]): k for k in todo}
-            for fut in cf.as_completed(futures, timeout=max(budget_s, 1)):
-                k = futures[fut]
-                try:
-                    cache.put(k, fut.result())
-                except Exception as exc:                     # noqa: BLE001 - isolate per source
-                    failed.append(k)
-                    print(f"[warn] {k}: {type(exc).__name__}: {exc}")
-                if time.time() > deadline:
-                    break
+            try:
+                for fut in cf.as_completed(futures, timeout=max(budget_s, 1)):
+                    k = futures[fut]
+                    try:
+                        cache.put(k, fut.result())
+                    except Exception as exc:              # noqa: BLE001 - isolate per source
+                        failed.append(k)
+                        print(f"[warn] {k}: {type(exc).__name__}: {exc}")
+            except TimeoutError:
+                for fut, k in futures.items():
+                    if not fut.done():
+                        fut.cancel()
+                        failed.append(k)
+                        print(f"[warn] {k}: timed out after {budget_s:.0f}s (budget)")
+            # do not block on cancelled threads
+            ex.shutdown(wait=False, cancel_futures=True)
+
     data = {k: cache.get(k) for k in wanted}
     for k, v in data.items():
         if v is None and k not in failed:
@@ -99,31 +110,29 @@ def build_components(data: dict, metal: str) -> tuple[dict, float, float, dict]:
 
     hike = sources.hike_pressure_from(kalshi) if kalshi else None
     comp = {
-        "real_rate": score.rank(macro.get("real10y", {}).get("hist"),
-                                macro.get("real10y", {}).get("level")),
-        "usd": score.rank(macro.get("usd", {}).get("hist"),
-                          macro.get("usd", {}).get("level")),
+        "real_rate": score.rank((macro.get("real10y") or {}).get("hist"),
+                                (macro.get("real10y") or {}).get("level")),
+        "usd": score.rank((macro.get("usd") or {}).get("hist"),
+                          (macro.get("usd") or {}).get("level")),
         "hike_pressure": hike,
-        "cot_crowding": None,                       # COT module: next build step
+        "cot_crowding": None,
         "momentum": score.rank(m.get("hist_mom20"), m.get("mom_20")),
         "gsr": score.rank((met.get("ratio") or {}).get("hist"),
                           (met.get("ratio") or {}).get("level")) if metal == "XAG" else None,
         "media_tone": None,
     }
 
-    tone_key = "gold" if metal == "XAU" else "silver"
-    tone = gdelt.get(tone_key)
-    if tone is not None and m.get("ret_5d") is not None:
-        comp["media_tone"] = max(-1.0, min(1.0, tone / 5.0))   # tone is roughly [-10, 10]
+    tone = gdelt.get("gold" if metal == "XAU" else "silver")
+    if tone is not None:
+        comp["media_tone"] = max(-1.0, min(1.0, tone / 5.0))
 
     events = list(data.get("trump") or [])
     press = score.pressure(events)
 
     releases = data.get("releases") or []
-    fomc = data.get("fomc") or []
-    tier1 = [r for r in releases if r["tier1"]]
+    tier1 = [r for r in releases if r.get("tier1")]
     days_out = min([r["days_out"] for r in tier1], default=None)
-    fomc_days = sources.next_event(fomc)
+    fomc_days = sources.next_event(data.get("fomc") or [])
     if fomc_days is not None:
         days_out = fomc_days if days_out is None else min(days_out, fomc_days)
     skew = score.event_skew(days_out, hike or 0.0)
@@ -137,24 +146,26 @@ def render(results: list[dict], meta: dict, data: dict, prev: dict) -> str:
     lines = []
     for r in results:
         p = prev.get(r["metal"], {}).get("vibe")
-        delta = "" if p is None else f"  {'▲' if r['vibe'] > p else '▼'}{abs(r['vibe'] - p):.0f}"
-        lines.append(f"{r['metal']}  {r['vibe']:+.0f}  {r['label']}{delta}"
-                     f"   conf {r['confidence']}")
-    c = meta["clock"]
+        delta = "" if p is None else f"  {'^' if r['vibe'] > p else 'v'}{abs(r['vibe'] - p):.0f}"
+        lines.append(f"{r['metal']}  {r['vibe']:+.0f}  {r['label']}{delta}   conf {r['confidence']}")
     lines.append(f"regime {results[0]['regime']:+.0f} | pressure {results[0]['pressure']:+.0f}")
     if meta.get("hike") is not None:
         lines.append(f"PRICED  hawkish lean {meta['hike']:+.2f}")
+    c = meta["clock"]
     if c["upcoming"]:
-        lines.append("CLOCK   " + " · ".join(c["upcoming"]))
+        lines.append("CLOCK   " + " | ".join(c["upcoming"]))
     if c["next_fomc_days"] is not None:
         lines.append(f"FOMC    in {c['next_fomc_days']}d")
-    hot = [e for e in meta["events"] if abs(e["impact"]) > 0.25][:3]
-    for e in hot:
+    for e in [e for e in meta["events"] if abs(e["impact"]) > 0.25][:3]:
         lines.append(f"POLITIC {e['topic']} {e['impact']:+.2f} ({e['age_min']:.0f}m) "
                      f"{e['text'][:70]}")
-    fr = [d for d in (data.get("fedreg") or []) if d["hot"]][:2]
-    for d in fr:
+    for d in [d for d in (data.get("fedreg") or []) if d.get("hot")][:2]:
         lines.append(f"POLICY  {d['title'][:80]}")
+    met = (data.get("metals") or {}).get("XAU") or {}
+    if met.get("px"):
+        xag = ((data.get("metals") or {}).get("XAG") or {}).get("px")
+        lines.append(f"PX      XAU {met['px']:.2f} | XAG {xag:.2f} (asof {met.get('asof')})"
+                     if xag else f"PX      XAU {met['px']:.2f}")
     if results[0]["missing"]:
         lines.append("STALE   " + ",".join(results[0]["missing"]))
     return "\n".join(lines)
@@ -162,15 +173,14 @@ def render(results: list[dict], meta: dict, data: dict, prev: dict) -> str:
 
 def send(text: str) -> None:
     token, chat = os.environ.get("TG_TOKEN"), os.environ.get("TG_CHAT")
-    if not token or not chat:
-        print("[info] no telegram secrets; printing only\n" + text)
-        return
     if os.environ.get("DRY_RUN", "").lower() == "true":
         print("[dry-run]\n" + text)
         return
+    if not token or not chat:
+        print("[info] no telegram secrets; printing only\n" + text)
+        return
     r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                      json={"chat_id": chat, "text": text,
-                            "disable_notification": False}, timeout=10)
+                      json={"chat_id": chat, "text": text}, timeout=10)
     if not r.ok:
         print(f"[warn] telegram {r.status_code}: {r.text[:200]}")
 
@@ -178,17 +188,13 @@ def send(text: str) -> None:
 def should_alert(results: list[dict], prev: dict, log: dict, force: bool) -> bool:
     if force:
         return True
-    if time.time() - log.get("last_ts", 0) < 1200:            # 20 min cooldown
+    if time.time() - log.get("last_ts", 0) < 1200:
         return False
     if log.get("count_today", 0) >= 12:
         return False
     for r in results:
         p = prev.get(r["metal"], {})
-        if not p:
-            return True
-        if p.get("label") != r["label"]:
-            return True
-        if abs(r["vibe"] - p.get("vibe", 0)) >= 12:
+        if not p or p.get("label") != r["label"] or abs(r["vibe"] - p.get("vibe", 0)) >= 12:
             return True
     return False
 
@@ -202,9 +208,9 @@ def main() -> None:
 
     STATE.mkdir(parents=True, exist_ok=True)
     cache = Cache()
-    wanted = ALL_SOURCES if args.track == "regime" else PRESSURE_SOURCES + ("macro", "releases",
-                                                                            "fomc", "fedreg")
-    data, failed = collect(cache, wanted, args.budget_seconds)
+    wanted = ALL_SOURCES if args.track == "regime" else PRESSURE_SOURCES
+    budget = args.budget_seconds if args.track == "pressure" else max(args.budget_seconds, 120)
+    data, failed = collect(cache, wanted, budget)
 
     results, meta = [], {}
     for metal in ("XAU", "XAG"):
@@ -243,6 +249,9 @@ def main() -> None:
     if args.append:
         schema.append_row(args.append, stamp, results, data, meta)
         print(f"[info] appended to {args.append}")
+
+    if failed:
+        print(f"[info] degraded sources: {', '.join(sorted(set(failed)))}")
 
 
 if __name__ == "__main__":
