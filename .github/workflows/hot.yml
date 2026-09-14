@@ -51,9 +51,9 @@ jobs:
             state/cache.json
             state/intraday.jsonl
             state/alert_log.json
-          key: vibe-state-${{ github.run_id }}
+          key: vibe-state-v2-${{ github.run_id }}
           restore-keys: |
-            vibe-state-
+            vibe-state-v2-
 
       - name: Poll and score
         env:
@@ -75,4 +75,4 @@ jobs:
             state/cache.json
             state/intraday.jsonl
             state/alert_log.json
-          key: vibe-state-${{ github.run_id }}
+          key: vibe-state-v2-${{ github.run_id }}
