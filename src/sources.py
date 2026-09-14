@@ -532,3 +532,22 @@ def gdelt_tone(timespan: str = "3d") -> dict:
 
 # Override the built-in federal_register with the self-healing version.
 from src.fedreg import federal_register  # noqa: E402,F401
+
+
+from src.patch2 import (fomc_dates, fred_releases, hike_pressure_from,
+                        federal_register)  # noqa: E402,F401
+
+
+from src.patch3 import hike_pressure_from, polymarket_odds  # noqa: E402,F401
+
+
+from src.patch4 import hike_pressure_from, gdelt_tone  # noqa: E402,F401
+
+
+from src.patch5 import gdelt_tone, fred_releases  # noqa: E402,F401
+
+
+from src import patch6  # noqa: E402,F401  (fills cot_crowding, patches blend)
+
+
+from src import patch7  # noqa: E402,F401  (macro surprise, inflation, geo, typed skew)
