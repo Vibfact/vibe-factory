@@ -557,3 +557,6 @@ from src import patch8  # noqa: E402,F401  (stress tickers, component log, healt
 
 
 from src.patch9 import federal_register, trump_pressure  # noqa: E402,F401
+
+
+from src import patch10  # noqa: E402,F401  (live broker price)

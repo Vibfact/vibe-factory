@@ -1,9 +1,11 @@
 {
  "XAU": [
-  "media_tone"
+  "media_tone",
+  "speech_tone"
  ],
- "updated": "2026-09-14T13:39:18+00:00",
+ "updated": "2026-09-14T15:45:13+00:00",
  "XAG": [
-  "media_tone"
+  "media_tone",
+  "speech_tone"
  ]
 }
