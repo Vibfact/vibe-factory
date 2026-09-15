@@ -1,4 +1,4 @@
-"""src/argentor.py  (v2 Ã¢â‚¬â€ exact pair matching)
+"""src/argentor.py  (v2 | exact pair matching)
 
 v1 guessed units from magnitude and averaged EUR with USD quotes, producing
 XAU 4008.84 from a EUR bid and a USD ask. The feed needs no guessing: it
@@ -147,9 +147,9 @@ def rates() -> dict:
                 print(f"[warn] {metal} EUR/USD cross drift {drift:.2%}")
 
     _CACHE.update({"ts": time.time(), "value": out})
-    print("[info] argentor " + " Ã‚Â· ".join(
+    print("[info] argentor " + " | ".join(
         f"{m} {d['usd_oz']:.2f} USD/oz" for m, d in out.items() if m != "extras")
-        + f" Ã‚Â· EURUSD {out['extras']['eurusd']}")
+        + f" | EURUSD {out['extras']['eurusd']}")
     return out
 
 

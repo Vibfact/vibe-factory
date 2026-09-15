@@ -1,4 +1,4 @@
-"""src/fmt.py  (v2 — full headlines, clickable links)
+"""src/fmt.py  (v2 â€” full headlines, clickable links)
 
 Changes vs v1:
   * headlines are no longer truncated; Federal Register titles and Trump posts
@@ -31,13 +31,13 @@ LABELS = {
     "stress_priced": "stress mkts", "cot_crowding": "positioning",
     "momentum": "momentum", "media_tone": "media tone", "gsr": "gold/silver",
 }
-TOPIC_ICON = {"tariff": "🧱", "fed_attack": "🏛", "dollar": "💵",
-              "gold": "🥇", "geopol": "🌍", "dealmaking": "🤝"}
+TOPIC_ICON = {"tariff": "ðŸ§±", "fed_attack": "ðŸ›", "dollar": "ðŸ’µ",
+              "gold": "ðŸ¥‡", "geopol": "ðŸŒ", "dealmaking": "ðŸ¤"}
 
 
 def _dot(label: str) -> str:
-    return {"Strongly bearish": "🟥", "Bearish": "🟧", "Neutral": "⬜",
-            "Bullish": "🟩", "Strongly bullish": "💚"}.get(label, "⬜")
+    return {"Strongly bearish": "ðŸŸ¥", "Bearish": "ðŸŸ§", "Neutral": "â¬œ",
+            "Bullish": "ðŸŸ©", "Strongly bullish": "ðŸ’š"}.get(label, "â¬œ")
 
 
 def esc(s) -> str:
@@ -76,7 +76,7 @@ def _movers(metal: str, top: int = 3) -> list[str]:
             continue
         if abs(d) < 0.004:
             continue
-        out.append((abs(d), f"{nice} {'+' if d > 0 else '−'}{abs(d) * PTS_PER_W:.0f}"))
+        out.append((abs(d), f"{nice} {'+' if d > 0 else 'âˆ’'}{abs(d) * PTS_PER_W:.0f}"))
     out.sort(reverse=True)
     return [t for _, t in out[:top]]
 
@@ -96,7 +96,7 @@ def _cot_line() -> str | None:
         hist = [v for v in d.get("hist", []) if v is not None]
         pct = (sum(1 for v in hist if v <= d["latest"]) / len(hist) * 100) if hist else 0
         bits.append(f"{metal} {d['latest'] * 100:+.1f}% OI ({pct:.0f}th pct)")
-    return " · ".join(bits) if bits else None
+    return " Â· ".join(bits) if bits else None
 
 
 def _tone_line() -> str | None:
@@ -108,7 +108,7 @@ def _tone_line() -> str | None:
         return None
     bits = [f"{k} {v['v']:+.1f}" for k, v in tones.items()
             if isinstance(v, dict) and v.get("v") is not None]
-    return " · ".join(bits) if bits else None
+    return " Â· ".join(bits) if bits else None
 
 
 def _reading(vibe: float, conf: float) -> str:
@@ -123,9 +123,9 @@ def _reading(vibe: float, conf: float) -> str:
     elif a < 80:
         s = "strong, broad agreement"
     else:
-        s = "extreme — check for a data error before acting"
+        s = "extreme â€” check for a data error before acting"
     if conf < 0.6:
-        s += " · low confidence, treat as noise"
+        s += " Â· low confidence, treat as noise"
     return s
 
 
@@ -138,14 +138,28 @@ def build(results: list[dict], meta: dict, data: dict, prev: dict) -> str:
             delta = ""
         else:
             d = r["vibe"] - p
-            arrow = "▲" if d > 0 else ("▼" if d < 0 else "▬")
+            arrow = "â–²" if d > 0 else ("â–¼" if d < 0 else "â–¬")
             delta = f" {arrow}{abs(d):.0f}"
         head.append(f"{_dot(r['label'])} <b>{r['metal']} {r['vibe']:+.0f}</b> "
-                    f"{esc(r['label'])}{delta} · <i>conf {r['confidence'] * 100:.0f}%</i>")
+                    f"{esc(r['label'])}{delta} Â· <i>conf {r['confidence'] * 100:.0f}%</i>")
     head.append(f"<i>{esc(_reading(results[0]['vibe'], results[0]['confidence']))}</i>")
-    head.append("─────────────────")
+    try:                                       # patch11 trend sentence
+        from src import patch11
+        _order = ("XAU", "XAG", "XPT", "XPD")
+        _scores = {}
+        for _i, _r in enumerate(results):
+            _m = str(_r.get("metal") or _r.get("symbol") or _r.get("asset")
+                     or (_order[_i] if _i < len(_order) else "")).upper()
+            if _m:
+                _scores[_m] = _r["vibe"]
+        _s = patch11.summary(_scores)
+        if _s:
+            head.append(f"<i>{esc(_s)}</i>")
+    except Exception as _exc:                   # noqa: BLE001
+        print(f"[warn] patch11 hook: {type(_exc).__name__}: {_exc}")
+    head.append("â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€")
 
-    body.append(f"📊 regime <b>{results[0]['regime']:+.0f}</b> · "
+    body.append(f"ðŸ“Š regime <b>{results[0]['regime']:+.0f}</b> Â· "
                 f"pressure <b>{results[0]['pressure']:+.0f}</b>")
 
     hike = meta.get("hike")
@@ -154,44 +168,44 @@ def build(results: list[dict], meta: dict, data: dict, prev: dict) -> str:
         try:
             from src.patch3 import LAST_DETAIL as D
             if D.get("p_hike") is not None:
-                extra = (f" — E[{D['expected_bps']:+.0f}bps], "
+                extra = (f" â€” E[{D['expected_bps']:+.0f}bps], "
                          f"hike {D['p_hike'] * 100:.0f}% / hold {D['p_hold'] * 100:.0f}%")
         except Exception:                                      # noqa: BLE001
             pass
-        body.append(f"🏦 hike lean <b>{hike:+.2f}</b>{esc(extra)}")
+        body.append(f"ðŸ¦ hike lean <b>{hike:+.2f}</b>{esc(extra)}")
 
     clock = meta.get("clock") or {}
     if clock.get("upcoming"):
-        body.append(f"⏰ {esc(clock['upcoming'][0])}")
+        body.append(f"â° {esc(clock['upcoming'][0])}")
     elif clock.get("next_fomc_days") is not None:
-        body.append(f"⏰ FOMC in <b>{clock['next_fomc_days']}d</b>")
+        body.append(f"â° FOMC in <b>{clock['next_fomc_days']}d</b>")
 
     if movers := _movers(results[0]["metal"]):
-        body.append("🧭 <b>why</b> " + esc(" · ".join(movers)))
+        body.append("ðŸ§­ <b>why</b> " + esc(" Â· ".join(movers)))
     if why := results[0].get("skew_why"):
-        body.append(f"🎯 skew <code>{esc(why)}</code>")
+        body.append(f"ðŸŽ¯ skew <code>{esc(why)}</code>")
     if cot := _cot_line():
-        body.append(f"📈 COT {esc(cot)}")
+        body.append(f"ðŸ“ˆ COT {esc(cot)}")
     if tone := _tone_line():
-        body.append(f"🗣 tone {esc(tone)}")
+        body.append(f"ðŸ—£ tone {esc(tone)}")
 
     for e in sorted(meta.get("events") or [], key=lambda x: -abs(x["impact"]))[:2]:
         if abs(e["impact"]) < 0.2:
             continue
-        icon = TOPIC_ICON.get(e["topic"], "📰")
+        icon = TOPIC_ICON.get(e["topic"], "ðŸ“°")
         age = f"{e['age_min'] / 60:.0f}h" if e["age_min"] > 90 else f"{e['age_min']:.0f}m"
         body.append(f"{icon} <b>{esc(e['topic'])}</b> {e['impact']:+.2f} <i>({age})</i>\n"
                     f"   {link(e.get('text', ''), e.get('url'))}")
 
     for d in [d for d in (data.get("fedreg") or []) if d.get("hot")][:3]:
-        body.append(f"📜 {link(d.get('title', ''), d.get('url'))}")
+        body.append(f"ðŸ“œ {link(d.get('title', ''), d.get('url'))}")
 
     met = data.get("metals") or {}
     xau, xag = (met.get("XAU") or {}).get("px"), (met.get("XAG") or {}).get("px")
     if xau and xag:
-        tail.append(f"💵 XAU <b>{xau:,.2f}</b> · XAG <b>{xag:,.2f}</b> · ratio {xau / xag:.1f}")
+        tail.append(f"ðŸ’µ XAU <b>{xau:,.2f}</b> Â· XAG <b>{xag:,.2f}</b> Â· ratio {xau / xag:.1f}")
     if results[0].get("missing"):
-        tail.append(f"⚠️ <i>stale: {esc(', '.join(results[0]['missing']))}</i>")
+        tail.append(f"âš ï¸ <i>stale: {esc(', '.join(results[0]['missing']))}</i>")
 
     lines = head + body + tail
     while sum(len(x) + 1 for x in lines) > MAX_CHARS and len(body) > 4:
