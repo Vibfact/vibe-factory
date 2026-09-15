@@ -7,6 +7,7 @@ on:
   schedule:
     - cron: "7 5 * * 1-5"    # 07:07 CEST digest, pre-London
     - cron: "7 12 * * 1-5"   # 14:07 CEST digest, pre-US data
+    - cron: "25 18 * * 3"
     - cron: "7 20 * * 5"     # Friday post-COT release
     - cron: "27 6 * * 6"     # Saturday self-audit
   workflow_dispatch:
@@ -57,6 +58,7 @@ jobs:
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ARGENTOR_TOKEN: ${{ secrets.ARGENTOR_TOKEN }}
+          TREND_FLOOR: '2026-09-15T00:00:00+00:00'
           BLS_API_KEY: ${{ secrets.BLS_API_KEY }}
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}

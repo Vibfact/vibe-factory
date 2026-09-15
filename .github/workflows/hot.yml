@@ -60,6 +60,7 @@ jobs:
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ARGENTOR_TOKEN: ${{ secrets.ARGENTOR_TOKEN }}
+          TREND_FLOOR: '2026-09-15T00:00:00+00:00'
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
