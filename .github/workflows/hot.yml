@@ -7,14 +7,12 @@ name: vibe-hot
 on:
   # >>> MANAGED SCHEDULE START <<<
   schedule:
-    # Belgian working day: every 5 min, 08:00-16:59 CEST (UTC+2).
-    # DST: after 2026-10-25 change "6-14" to "7-15" for CET (UTC+1).
+    # >>> MANAGED SCHEDULE START <<<
     - cron: '*/5 6-14 * * 1-5'
-    # Evenings and overnight, hourly at :23
     - cron: '23 15-23,0-5 * * 1-5'
-    # Weekends, every 4 hours
-    - cron: '13 1,5,9,13,17,21 * * 6,0'  workflow_dispatch:
-  # MANAGED SCHEDULE END
+    - cron: '13 1,5,9,13,17,21 * * 6,0'
+    # >>> MANAGED SCHEDULE END <<<
+  workflow_dispatch:
     inputs:
       dry_run:
         description: "Compute but do not send alerts"
@@ -60,7 +58,6 @@ jobs:
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ARGENTOR_TOKEN: ${{ secrets.ARGENTOR_TOKEN }}
-          TREND_FLOOR: '2026-09-15T00:00:00+00:00'
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
